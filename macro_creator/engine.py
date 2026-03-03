@@ -131,8 +131,8 @@ class MacroEngine:
         elif task.task_type == "Screenshot":
             folder = Path(params.get("folder", "screenshots"))
             folder.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_name = f"loop_{loop_idx + 1:03d}_task_{task_idx + 1:03d}_{stamp}.png"
+            base_name = str(params.get("base_name", "shot")).strip() or "shot"
+            file_name = f"{base_name}_loop_{loop_idx + 1:03d}_pass_{task_idx + 1:03d}.png"
             p.screenshot(str(folder / file_name))
 
     def _resolve_value(self, value: str, doc: MacroDocument, loop_idx: int) -> str:
