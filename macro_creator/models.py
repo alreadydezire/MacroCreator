@@ -35,12 +35,14 @@ class MacroDocument:
     tasks: List[Task] = field(default_factory=list)
     loop_count: int = 1
     variables: Dict[str, List[str]] = field(default_factory=dict)
+    csv_sources: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
             "loop_count": self.loop_count,
             "variables": self.variables,
+            "csv_sources": self.csv_sources,
             "tasks": [
                 {"task_type": task.task_type, "params": task.params}
                 for task in self.tasks
@@ -57,4 +59,5 @@ class MacroDocument:
             tasks=tasks,
             loop_count=int(payload.get("loop_count", 1)),
             variables=payload.get("variables", {}),
+            csv_sources=payload.get("csv_sources", {}),
         )

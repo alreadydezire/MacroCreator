@@ -273,18 +273,20 @@ class MacroCreatorApp:
         self.root.configure(bg="black")
 
         self.state_var = tk.StringVar(value="State: Off")
-        self.task_info_var = tk.StringVar(value="Current Task: -")
-        self.loop_info_var = tk.StringVar(value="Current Loop: -")
-        self.action_var = tk.StringVar(value="What I'm doing: Idle")
-        self.macro_info_var = tk.StringVar(value="Name: Untitled | Saved: Yes | Tasks: 0")
+        self.task_info_var = tk.StringVar(value="Current Task/Loop: -")
+        self.loop_info_var = tk.StringVar(value="")
+        self.action_var = tk.StringVar(value="Details: Idle")
 
+        self.loop_mode_var = tk.StringVar(value="count")
         self.loop_var = tk.IntVar(value=1)
+        self.loop_csv_var = tk.StringVar(value="")
         self.quick_delay = tk.StringVar(value="0")
         self.quick_fail_safe = tk.BooleanVar(value=True)
 
         self._load_images()
         self._build_menu()
         self._build_layout()
+        self._refresh_loop_csv_options()
         self._refresh_task_rows()
         self._refresh_macro_info()
         self._tick_status()
@@ -315,10 +317,7 @@ class MacroCreatorApp:
         file_menu.add_command(label="Save", command=self.save_macro, image=self.menu_icons.get("save"), compound=tk.LEFT)
         file_menu.add_command(label="Save As", command=self.save_as_macro, image=self.menu_icons.get("saveas"), compound=tk.LEFT)
         file_menu.add_separator()
-        csv_sub = tk.Menu(file_menu, tearoff=0)
-        csv_sub.add_command(label="Import CSV Variables", command=self.import_csv)
-        csv_sub.add_command(label="Manage CSVs", command=self.open_manage_csvs_window)
-        file_menu.add_cascade(label="CSVs", menu=csv_sub, image=self.menu_icons.get("varsett"), compound=tk.LEFT)
+        file_menu.add_command(label="Manage CSVs", command=self.open_manage_csvs_window, image=self.menu_icons.get("varsett"), compound=tk.LEFT)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit, image=self.menu_icons.get("exit"), compound=tk.LEFT)
         m.add_cascade(label="File", menu=file_menu)
@@ -359,13 +358,20 @@ class MacroCreatorApp:
 
         tk.Label(outer, text="Macro Tasks", bg="white", relief="ridge", font=("Yu Gothic UI Semibold", 16)).pack(fill=tk.X, pady=(0, 4))
 
-        tk.Label(outer, textvariable=self.macro_info_var, bg="white", anchor="w", relief="ridge").pack(fill=tk.X, pady=(0, 4))
+        info_frame = tk.Frame(outer, bg="white", relief="ridge", bd=1)
+        info_frame.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(info_frame, text="Current File:", bg="white", font=("TkDefaultFont", 10, "bold")).pack(side=tk.LEFT, padx=(6,2))
+        self.current_file_var = tk.StringVar(value="Untitled")
+        tk.Label(info_frame, textvariable=self.current_file_var, bg="white", anchor="w").pack(side=tk.LEFT)
+        self.unsaved_var = tk.StringVar(value="")
+        tk.Label(info_frame, textvariable=self.unsaved_var, bg="white", fg="red", font=("TkDefaultFont", 12, "bold")).pack(side=tk.LEFT, padx=(2,8))
+        self.task_count_var = tk.StringVar(value="Tasks: 0")
+        tk.Label(info_frame, textvariable=self.task_count_var, bg="white").pack(side=tk.RIGHT, padx=8)
 
         state_frame = tk.Frame(outer, bg="white", relief="ridge", bd=1)
         state_frame.pack(fill=tk.X, pady=(0, 4))
         tk.Label(state_frame, textvariable=self.state_var, bg="white", anchor="w", font=("Yu Gothic UI Semibold", 11)).pack(fill=tk.X)
         tk.Label(state_frame, textvariable=self.task_info_var, bg="white", anchor="w").pack(fill=tk.X)
-        tk.Label(state_frame, textvariable=self.loop_info_var, bg="white", anchor="w").pack(fill=tk.X)
         tk.Label(state_frame, textvariable=self.action_var, bg="white", anchor="w").pack(fill=tk.X)
 
         list_wrap = tk.Frame(outer, bg="white", relief="sunken", bd=1)
@@ -395,17 +401,22 @@ class MacroCreatorApp:
         tk.Label(quick, text="Inter-task Delay (sec):", bg="white").grid(row=0, column=0, sticky="w", padx=4)
         tk.Entry(quick, textvariable=self.quick_delay, width=8, relief="ridge", bg="white").grid(row=0, column=1, sticky="w")
         tk.Checkbutton(quick, text="Fail-safe enabled", variable=self.quick_fail_safe, bg="white").grid(row=0, column=2, padx=10, sticky="w")
-        tk.Label(quick, text="Loop Count:", bg="white").grid(row=0, column=3, sticky="e")
-        ttk.Spinbox(quick, from_=1, to=999999, textvariable=self.loop_var, width=8).grid(row=0, column=4, padx=4)
+
+        tk.Radiobutton(quick, text="Loop Count", variable=self.loop_mode_var, value="count", bg="white").grid(row=1, column=0, sticky="w", padx=4)
+        ttk.Spinbox(quick, from_=1, to=999999, textvariable=self.loop_var, width=8).grid(row=1, column=1, sticky="w")
+        tk.Radiobutton(quick, text="Loop till CSV end", variable=self.loop_mode_var, value="csv_end", bg="white").grid(row=1, column=2, sticky="w")
+        self.loop_csv_combo = ttk.Combobox(quick, textvariable=self.loop_csv_var, state="readonly", values=[], width=20)
+        self.loop_csv_combo.grid(row=1, column=3, sticky="w", padx=4)
+        tk.Radiobutton(quick, text="Loop till stopped", variable=self.loop_mode_var, value="stopped", bg="white").grid(row=1, column=4, sticky="w")
 
         ctrl = tk.Frame(bottom, bg="white")
         ctrl.pack(fill=tk.X, padx=4, pady=4)
-        settings_btn = tk.Button(ctrl, image=self.settings_icon, width=34, height=34, bg="#dddddd", relief="ridge", command=self.open_settings_window)
+        settings_btn = tk.Button(ctrl, image=self.settings_icon, width=42, height=42, bg="#dddddd", relief="ridge", command=self.open_settings_window)
         settings_btn.pack(side=tk.LEFT, padx=(0, 6))
         tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", command=self.run_pause_continue).pack_forget()
-        self.run_btn = tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", command=self.run_pause_continue)
+        self.run_btn = tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", height=2, command=self.run_pause_continue)
         self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=10, command=self.stop_macro)
+        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=10, height=2, command=self.stop_macro)
         self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
 
     def _mark_dirty(self) -> None:
@@ -414,19 +425,26 @@ class MacroCreatorApp:
 
     def _refresh_macro_info(self) -> None:
         name = Path(self.file_path).name if self.file_path else "Untitled"
-        self.macro_info_var.set(f"Name: {name} | Saved: {'No' if self.dirty else 'Yes'} | Tasks: {len(self.doc.tasks)}")
+        self.current_file_var.set(name)
+        self.unsaved_var.set("*" if self.dirty else "")
+        self.task_count_var.set(f"Tasks: {len(self.doc.tasks)}")
 
     def _summary(self, task: Task) -> str:
         p = task.params
         if task.task_type == "Variable":
-            return f"Variable - name: {p.get('name','')}"
+            return f"name: {p.get('name','')}"
         if task.task_type == "Keypress":
-            return f"Keypress - key: {p.get('key','')}"
+            return f"key: {p.get('key','')}"
         if task.task_type == "Click":
-            return f"Click - {p.get('click_type','Single')} {p.get('button','Left')} @ {p.get('x','0')},{p.get('y','0')}"
+            return f"{p.get('click_type','Single')} {p.get('button','Left')} @ {p.get('x','0')},{p.get('y','0')}"
         if task.task_type == "Condition":
-            return f"Condition - pos {p.get('x','0')},{p.get('y','0')} rgb {p.get('rgb','')}"
-        return f"{task.task_type} - " + ", ".join(f"{k}: {v}" for k, v in p.items() if k != "comment")
+            return f"pos {p.get('x','0')},{p.get('y','0')} rgb {p.get('rgb','')}"
+        text = ", ".join(f"{k}: {v}" for k, v in p.items() if k != "comment")
+        return text
+
+    def _short(self, text: str, n: int = 68) -> str:
+        text = str(text)
+        return text if len(text) <= n else text[: n - 1] + "…"
 
     def _refresh_task_rows(self) -> None:
         for c in self.task_inner.winfo_children():
@@ -435,30 +453,36 @@ class MacroCreatorApp:
             tk.Label(self.task_inner, text="There are currently no tasks, use the options below to start now.", bg="white").pack(anchor="w", padx=8, pady=8)
             self._refresh_macro_info()
             return
+
         for idx, task in enumerate(self.doc.tasks):
             bg = "#dff0ff" if idx == self.selected_index else "white"
             row = tk.Frame(self.task_inner, bg=bg, relief="ridge", bd=1)
             row.pack(fill=tk.X, padx=2, pady=2)
+            row.grid_columnconfigure(1, weight=1)
+            row.grid_columnconfigure(2, minsize=230)
             row.bind("<Button-1>", lambda _e, i=idx: self._select(i))
 
-            tk.Label(row, image=self.icons.get(task.task_type), bg=bg).pack(side=tk.LEFT, padx=4)
-
-            text_wrap = tk.Frame(row, bg=bg)
-            text_wrap.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            tk.Label(text_wrap, text=task.task_type, bg=bg, font=("TkDefaultFont", 9, "bold")).pack(side=tk.LEFT)
-            tk.Label(text_wrap, text=" - " + self._summary(task).replace(f"{task.task_type} - ", ""), bg=bg, font=("TkDefaultFont", 9, "italic"), anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            tk.Label(row, image=self.icons.get(task.task_type), bg=bg).grid(row=0, column=0, padx=4, sticky="w")
+            tk.Label(row, text=task.task_type, bg=bg, font=("TkDefaultFont", 9, "bold"), anchor="w").grid(row=0, column=1, sticky="w")
+            tk.Label(row, text=" - " + self._short(self._summary(task), 95), bg=bg, font=("TkDefaultFont", 9, "italic"), anchor="w").grid(row=0, column=1, sticky="w", padx=(70, 0))
 
             if task.task_type == "Condition":
-                color_box = tk.Label(row, text="  ", bg=_hex_from_rgb_string(str(task.params.get("rgb", "255,255,255"))), relief="ridge", width=2)
-                color_box.pack(side=tk.LEFT, padx=4)
+                tk.Label(row, text="  ", bg=_hex_from_rgb_string(str(task.params.get("rgb", "255,255,255"))), relief="ridge", width=2).grid(row=0, column=1, sticky="e", padx=(0, 6))
 
-            comment = str(task.params.get("comment", "")).strip()
-            tk.Label(row, text=comment, bg=bg, fg="#444", width=24, anchor="w").pack(side=tk.LEFT, padx=4)
+            comment = self._short(str(task.params.get("comment", "")).strip(), 36)
+            tk.Label(row, text=comment, bg=bg, fg="#444", width=28, anchor="w").grid(row=0, column=2, sticky="w")
 
             btns = tk.Frame(row, bg=bg)
-            btns.pack(side=tk.RIGHT)
-            if task.task_type in TASKS_WITH_POSITION:
-                tk.Button(btns, text="◎", width=2, relief="ridge", bg="white", command=lambda i=idx: self.show_position(i)).pack(side=tk.LEFT, padx=1)
+            btns.grid(row=0, column=3, sticky="e", padx=2)
+            tk.Button(
+                btns,
+                text="◎",
+                width=2,
+                relief="ridge",
+                bg="white",
+                command=lambda i=idx: self.show_position(i),
+                state=("normal" if task.task_type in TASKS_WITH_POSITION else "disabled"),
+            ).pack(side=tk.LEFT, padx=1)
             for label, cmd, fg in [
                 ("↑", lambda i=idx: self.move_up(i), "black"),
                 ("↓", lambda i=idx: self.move_down(i), "black"),
@@ -474,7 +498,9 @@ class MacroCreatorApp:
         self._refresh_task_rows()
 
     def _edit_dialog(self, task_type: str, initial: Dict[str, str]) -> Dict[str, str] | None:
-        d = TaskEditorDialog(self.root, task_type, initial, list(self.doc.variables.keys()), icon=self.icons.get(task_type))
+        if task_type == "Screenshot" and not initial.get("base_name"):
+            initial["base_name"] = (Path(self.file_path).stem if self.file_path else "Untitled")
+        d = TaskEditorDialog(self.root, task_type, initial, self._variable_source_options(), icon=self.icons.get(task_type))
         self.root.wait_window(d.window)
         return d.result
 
@@ -535,9 +561,16 @@ class MacroCreatorApp:
         if self.selected_index is not None: self.delete_at(self.selected_index)
 
     def run_pause_continue(self) -> None:
-        self.doc.loop_count = max(1, int(self.loop_var.get()))
+        if self.loop_mode_var.get() == "count":
+            self.doc.loop_count = max(1, int(self.loop_var.get()))
+        elif self.loop_mode_var.get() == "csv_end" and self.loop_csv_var.get() in self.csv_sources:
+            csv_name = self.loop_csv_var.get()
+            lengths = [len(v) for k,v in self.doc.variables.items() if k.startswith(csv_name + "::")]
+            self.doc.loop_count = max(1, max(lengths) if lengths else 1)
+        else:
+            self.doc.loop_count = 999999
         if not self.engine.state.running:
-            self.engine.run_async(self.doc, lambda s: self.action_var.set(f"What I'm doing: {s}"))
+            self.engine.run_async(self.doc, lambda s: self.action_var.set(f"Details: {s}"))
             self.run_btn.config(text="Pause", image=self.pause_icon, bg="orange")
             self.cancel_btn.config(state="normal")
         elif not self.engine.state.paused:
@@ -552,8 +585,7 @@ class MacroCreatorApp:
     def _tick_status(self) -> None:
         if self.engine.state.running:
             self.state_var.set(f"State: {'Paused' if self.engine.state.paused else 'Running'}")
-            self.task_info_var.set(f"Current Task: Task {self.engine.state.current_task_index + 1}/{max(1, len(self.doc.tasks))}")
-            self.loop_info_var.set(f"Current Loop: Loop {self.engine.state.current_loop + 1}/{self.doc.loop_count}")
+            self.task_info_var.set(f"Current Task: {self.engine.state.current_task_index + 1}/{max(1, len(self.doc.tasks))}   |   Current Loop: {self.engine.state.current_loop + 1}/{self.doc.loop_count}")
             self.selected_index = self.engine.state.current_task_index
             self._refresh_task_rows()
         else:
@@ -573,6 +605,39 @@ class MacroCreatorApp:
         if section != "all":
             messagebox.showinfo("Settings", f"Quick link opened section: {section}", parent=w)
 
+
+    def _variable_source_options(self) -> list[str]:
+        options: list[str] = []
+        for csv_name in self.csv_sources.keys():
+            for key in self.doc.variables.keys():
+                if key.startswith(csv_name + "::"):
+                    options.append(f"{csv_name} -> {key.split('::',1)[1]}")
+        return options
+
+    def _load_csv_source(self, path: str) -> dict[str, list[str]]:
+        name = Path(path).name
+        rows = []
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.reader(f))
+        if not rows:
+            return {}
+        first = rows[0]
+        has_header = any(c.strip() and not c.strip().isdigit() for c in first)
+        headers = first if has_header else [f"column{i+1}" for i in range(len(first))]
+        data_rows = rows[1:] if has_header else rows
+        out: dict[str, list[str]] = {f"{name}::{h}": [] for h in headers}
+        for r in data_rows:
+            for i, h in enumerate(headers):
+                out[f"{name}::{h}"].append(r[i] if i < len(r) else "")
+        return out
+
+    def _refresh_loop_csv_options(self) -> None:
+        values = list(self.csv_sources.keys())
+        if hasattr(self, "loop_csv_combo"):
+            self.loop_csv_combo.configure(values=values)
+            if values and not self.loop_csv_var.get():
+                self.loop_csv_var.set(values[0])
+
     def open_manage_csvs_window(self) -> None:
         w = tk.Toplevel(self.root); w.title("Manage CSVs"); w.configure(bg="white")
         container = tk.Frame(w, bg="white"); container.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
@@ -588,14 +653,19 @@ class MacroCreatorApp:
             if not path: return
             key = Path(path).name
             self.csv_sources[key] = path
-            self.doc.variables.update(MacroStorage.load_csv_variables(path))
+            self.doc.variables.update(self._load_csv_source(path))
             lb.insert(tk.END, key)
+            self._refresh_loop_csv_options()
             self._mark_dirty()
 
         def do_delete():
             if not lb.curselection(): return
             i = lb.curselection()[0]; key = lb.get(i)
             lb.delete(i); self.csv_sources.pop(key, None)
+            for k in [vk for vk in list(self.doc.variables.keys()) if vk.startswith(key + "::")]:
+                self.doc.variables.pop(k, None)
+            self._refresh_loop_csv_options()
+            self._mark_dirty()
 
         def do_edit():
             messagebox.showinfo("Edit CSV", "CSV Editor not implemented yet.", parent=w)
@@ -627,41 +697,44 @@ class MacroCreatorApp:
                     preview.insert("", tk.END, values=values)
 
         cfg = tk.LabelFrame(w, text="Basic Config", bg="white"); cfg.pack(fill=tk.X, padx=10, pady=10)
-        v1 = tk.BooleanVar(value=True); v2 = tk.BooleanVar(value=True); v3 = tk.BooleanVar(value=True)
+        v1 = tk.BooleanVar(value=True); v2 = tk.BooleanVar(value=False); v3 = tk.BooleanVar(value=False)
         tk.Checkbutton(cfg, text="First Row Contains Headers", variable=v1, bg="white").pack(anchor="w")
         tk.Label(cfg, text="Default delimiter", bg="white").pack(anchor="w")
-        tk.Entry(cfg, width=4, relief="ridge", bg="white").pack(anchor="w")
+        delim = tk.StringVar(value=",")
+        tk.Entry(cfg, textvariable=delim, width=4, relief="ridge", bg="white").pack(anchor="w")
+        tk.Button(cfg, text="Save", relief="ridge", bg="white", command=lambda: messagebox.showinfo("Saved", "CSV configuration saved.", parent=w)).pack(anchor="w", pady=6)
         tk.Checkbutton(cfg, text="Auto-trim whitespace", variable=v2, bg="white").pack(anchor="w")
         tk.Checkbutton(cfg, text="Auto-skip blank rows", variable=v3, bg="white").pack(anchor="w")
 
-    def import_csv(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
-        if not path: return
-        self.doc.variables = MacroStorage.load_csv_variables(path)
-        self.csv_sources[Path(path).name] = path
-        self._mark_dirty()
-        messagebox.showinfo("Imported", f"Loaded columns: {', '.join(self.doc.variables.keys())}")
-
     def new_macro(self) -> None:
-        self.doc = MacroDocument(); self.file_path = None; self.selected_index = None; self.loop_var.set(1); self.dirty = False
-        self._refresh_task_rows(); self._refresh_macro_info()
+        self.doc = MacroDocument(); self.file_path = None; self.selected_index = None; self.loop_var.set(1); self.csv_sources = {}; self.dirty = False
+        self._refresh_loop_csv_options(); self._refresh_task_rows(); self._refresh_macro_info()
 
     def save_macro(self) -> None:
-        self.doc.loop_count = max(1, int(self.loop_var.get()))
+        if self.loop_mode_var.get() == "count":
+            self.doc.loop_count = max(1, int(self.loop_var.get()))
+        elif self.loop_mode_var.get() == "csv_end" and self.loop_csv_var.get() in self.csv_sources:
+            csv_name = self.loop_csv_var.get()
+            lengths = [len(v) for k,v in self.doc.variables.items() if k.startswith(csv_name + "::")]
+            self.doc.loop_count = max(1, max(lengths) if lengths else 1)
+        else:
+            self.doc.loop_count = 999999
         if not self.file_path: self.save_as_macro(); return
+        self.doc.csv_sources = dict(self.csv_sources)
         MacroStorage.save(self.file_path, self.doc); self.dirty = False; self._refresh_macro_info()
 
     def save_as_macro(self) -> None:
         p = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Macro JSON", "*.json")])
         if not p: return
         self.file_path = p
+        self.doc.csv_sources = dict(self.csv_sources)
         MacroStorage.save(p, self.doc); self.dirty = False; self._refresh_macro_info()
 
     def open_macro(self) -> None:
         p = filedialog.askopenfilename(filetypes=[("Macro JSON", "*.json")])
         if not p: return
-        self.file_path = p; self.doc = MacroStorage.load(p); self.loop_var.set(self.doc.loop_count); self.selected_index = None; self.dirty = False
-        self._refresh_task_rows(); self._refresh_macro_info()
+        self.file_path = p; self.doc = MacroStorage.load(p); self.csv_sources = dict(getattr(self.doc, "csv_sources", {})); self.loop_var.set(self.doc.loop_count); self.selected_index = None; self.dirty = False
+        self._refresh_loop_csv_options(); self._refresh_task_rows(); self._refresh_macro_info()
 
     def run(self) -> None:
         self.root.mainloop()

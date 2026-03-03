@@ -24,3 +24,13 @@ def test_variable_resolution():
     doc = MacroDocument(variables={"name": ["alice", "bob"]})
     assert engine._resolve_value("hi {{name}}", doc, 0) == "hi alice"
     assert engine._resolve_value("hi {{name}}", doc, 1) == "hi bob"
+
+
+def test_document_roundtrip_csv_sources(tmp_path):
+    from macro_creator.storage import MacroStorage
+
+    doc = MacroDocument(name="B", csv_sources={"students.csv": "/tmp/students.csv"})
+    out = tmp_path / "macro2.json"
+    MacroStorage.save(str(out), doc)
+    loaded = MacroStorage.load(str(out))
+    assert loaded.csv_sources == {"students.csv": "/tmp/students.csv"}
