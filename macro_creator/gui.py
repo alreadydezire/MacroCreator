@@ -431,7 +431,7 @@ class MacroCreatorApp:
         tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", command=self.run_pause_continue).pack_forget()
         self.run_btn = tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", font=("TkDefaultFont", 11, "bold"), padx=10, pady=8, command=self.run_pause_continue)
         self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=10, font=("TkDefaultFont", 11, "bold"), padx=10, pady=8, command=self.stop_macro)
+        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=12, font=("TkDefaultFont", 11, "bold"), padx=10, pady=8, command=self.stop_macro)
         self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
 
     def _update_loop_mode_controls(self) -> None:
@@ -440,6 +440,8 @@ class MacroCreatorApp:
         self.loop_csv_combo.configure(state="readonly" if mode == "csv_end" else "disabled")
 
     def _bind_row_click(self, widget, idx: int) -> None:
+        if isinstance(widget, tk.Button):
+            return
         widget.bind("<Button-1>", lambda _e, i=idx: self._select(i))
         for child in widget.winfo_children():
             self._bind_row_click(child, idx)
@@ -501,10 +503,18 @@ class MacroCreatorApp:
 
             btns = tk.Frame(row, bg=bg)
             btns.grid(row=0, column=3, sticky="e", padx=2)
+            action_btn_w = 42
+            action_btn_h = 42
             show_btn = tk.Button(
-                btns, image=self.tasklist_icons.get("show"), text="◎" if not self.tasklist_icons.get("show") else "", width=20,
-                relief="ridge", bg="white", command=lambda i=idx: self.show_position(i),
-                state=("normal" if task.task_type in TASKS_WITH_POSITION else "disabled")
+                btns,
+                image=self.tasklist_icons.get("show"),
+                text="◎" if not self.tasklist_icons.get("show") else "",
+                width=action_btn_w,
+                height=action_btn_h,
+                relief="ridge",
+                bg="white",
+                command=lambda i=idx: self.show_position(i),
+                state=("normal" if task.task_type in TASKS_WITH_POSITION else "disabled"),
             )
             show_btn.pack(side=tk.LEFT, padx=1)
             CreateToolTip(show_btn, "Show task position")
@@ -520,7 +530,8 @@ class MacroCreatorApp:
                     btns,
                     image=self.tasklist_icons.get(key) if key else None,
                     text=fallback if (not key or not self.tasklist_icons.get(key)) else "",
-                    width=20,
+                    width=action_btn_w,
+                    height=action_btn_h,
                     relief="ridge",
                     bg="white",
                     fg=fg,
