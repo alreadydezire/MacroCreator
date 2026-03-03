@@ -1,0 +1,9 @@
+<tasks>
+Click|114,87|Double|Left
+Click|543,607|Single|Left
+Hotkey|CTRL+A
+<sett>
+loopcount|1
+<params>
+name|path/names.txt
+email|path/emails.txt

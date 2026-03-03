@@ -1,0 +1,8 @@
+<task>
+Click|332,94|Double|Left
+Click|1193,653|Single|Left
+String|Downupsock23!
+Click|1072,723|Single|Left
+<sett>
+loopcount|1
+<param>
