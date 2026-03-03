@@ -77,6 +77,15 @@ MENU_ICON_MAP = {
     "settings": "Images/sett-ico.png",
 }
 
+TASKLIST_ICON_MAP = {
+    "show": "Images/TaskList/show.png",
+    "up": "Images/TaskList/up-arrow.png",
+    "down": "Images/TaskList/down-arrow.png",
+    "edit": "Images/TaskList/edit.png",
+    "duplicate": "Images/TaskList/duplicate.png",
+}
+
+
 
 def _hex_from_rgb_string(rgb_text: str) -> str:
     try:
@@ -264,6 +273,7 @@ class MacroCreatorApp:
         self.selected_index: int | None = None
         self.icons: Dict[str, Any] = {}
         self.menu_icons: Dict[str, Any] = {}
+        self.tasklist_icons: Dict[str, Any] = {}
         self.csv_sources: Dict[str, str] = {}
         self.dirty = False
 
@@ -307,6 +317,8 @@ class MacroCreatorApp:
         self.settings_icon = self._load_image("Images/sett-ico.png", (20, 20))
         for k, rel in MENU_ICON_MAP.items():
             self.menu_icons[k] = self._load_image(rel, (18, 18))
+        for k, rel in TASKLIST_ICON_MAP.items():
+            self.tasklist_icons[k] = self._load_image(rel, (14, 14))
 
     def _build_menu(self) -> None:
         m = tk.Menu(self.root)
@@ -403,21 +415,34 @@ class MacroCreatorApp:
         tk.Checkbutton(quick, text="Fail-safe enabled", variable=self.quick_fail_safe, bg="white").grid(row=0, column=2, padx=10, sticky="w")
 
         tk.Radiobutton(quick, text="Loop Count", variable=self.loop_mode_var, value="count", bg="white").grid(row=1, column=0, sticky="w", padx=4)
-        ttk.Spinbox(quick, from_=1, to=999999, textvariable=self.loop_var, width=8).grid(row=1, column=1, sticky="w")
+        self.loop_count_spin = ttk.Spinbox(quick, from_=1, to=999999, textvariable=self.loop_var, width=8)
+        self.loop_count_spin.grid(row=1, column=1, sticky="w")
         tk.Radiobutton(quick, text="Loop till CSV end", variable=self.loop_mode_var, value="csv_end", bg="white").grid(row=1, column=2, sticky="w")
         self.loop_csv_combo = ttk.Combobox(quick, textvariable=self.loop_csv_var, state="readonly", values=[], width=20)
         self.loop_csv_combo.grid(row=1, column=3, sticky="w", padx=4)
         tk.Radiobutton(quick, text="Loop till stopped", variable=self.loop_mode_var, value="stopped", bg="white").grid(row=1, column=4, sticky="w")
+        self.loop_mode_var.trace_add("write", lambda *_: self._update_loop_mode_controls())
+        self._update_loop_mode_controls()
 
         ctrl = tk.Frame(bottom, bg="white")
         ctrl.pack(fill=tk.X, padx=4, pady=4)
         settings_btn = tk.Button(ctrl, image=self.settings_icon, width=42, height=42, bg="#dddddd", relief="ridge", command=self.open_settings_window)
         settings_btn.pack(side=tk.LEFT, padx=(0, 6))
         tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", command=self.run_pause_continue).pack_forget()
-        self.run_btn = tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", height=2, command=self.run_pause_continue)
+        self.run_btn = tk.Button(ctrl, text="Run", image=self.play_icon, compound="left", bg="lime green", fg="white", relief="ridge", font=("TkDefaultFont", 11, "bold"), padx=10, pady=8, command=self.run_pause_continue)
         self.run_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=10, height=2, command=self.stop_macro)
+        self.cancel_btn = tk.Button(ctrl, text="Cancel", bg="red", fg="white", relief="ridge", state="disabled", width=10, font=("TkDefaultFont", 11, "bold"), padx=10, pady=8, command=self.stop_macro)
         self.cancel_btn.pack(side=tk.LEFT, padx=(6, 0))
+
+    def _update_loop_mode_controls(self) -> None:
+        mode = self.loop_mode_var.get()
+        self.loop_count_spin.configure(state="normal" if mode == "count" else "disabled")
+        self.loop_csv_combo.configure(state="readonly" if mode == "csv_end" else "disabled")
+
+    def _bind_row_click(self, widget, idx: int) -> None:
+        widget.bind("<Button-1>", lambda _e, i=idx: self._select(i))
+        for child in widget.winfo_children():
+            self._bind_row_click(child, idx)
 
     def _mark_dirty(self) -> None:
         self.dirty = True
@@ -460,11 +485,13 @@ class MacroCreatorApp:
             row.pack(fill=tk.X, padx=2, pady=2)
             row.grid_columnconfigure(1, weight=1)
             row.grid_columnconfigure(2, minsize=230)
-            row.bind("<Button-1>", lambda _e, i=idx: self._select(i))
 
             tk.Label(row, image=self.icons.get(task.task_type), bg=bg).grid(row=0, column=0, padx=4, sticky="w")
-            tk.Label(row, text=task.task_type, bg=bg, font=("TkDefaultFont", 9, "bold"), anchor="w").grid(row=0, column=1, sticky="w")
-            tk.Label(row, text=" - " + self._short(self._summary(task), 95), bg=bg, font=("TkDefaultFont", 9, "italic"), anchor="w").grid(row=0, column=1, sticky="w", padx=(70, 0))
+
+            text_wrap = tk.Frame(row, bg=bg)
+            text_wrap.grid(row=0, column=1, sticky="w")
+            tk.Label(text_wrap, text=task.task_type, bg=bg, font=("TkDefaultFont", 9, "bold"), anchor="w").pack(side=tk.LEFT)
+            tk.Label(text_wrap, text=" - " + self._short(self._summary(task), 90), bg=bg, font=("TkDefaultFont", 9, "italic"), anchor="w").pack(side=tk.LEFT)
 
             if task.task_type == "Condition":
                 tk.Label(row, text="  ", bg=_hex_from_rgb_string(str(task.params.get("rgb", "255,255,255"))), relief="ridge", width=2).grid(row=0, column=1, sticky="e", padx=(0, 6))
@@ -474,27 +501,39 @@ class MacroCreatorApp:
 
             btns = tk.Frame(row, bg=bg)
             btns.grid(row=0, column=3, sticky="e", padx=2)
-            tk.Button(
-                btns,
-                text="◎",
-                width=2,
-                relief="ridge",
-                bg="white",
-                command=lambda i=idx: self.show_position(i),
-                state=("normal" if task.task_type in TASKS_WITH_POSITION else "disabled"),
-            ).pack(side=tk.LEFT, padx=1)
-            for label, cmd, fg in [
-                ("↑", lambda i=idx: self.move_up(i), "black"),
-                ("↓", lambda i=idx: self.move_down(i), "black"),
-                ("✎", lambda i=idx: self.edit_task_at(i), "black"),
-                ("⧉", lambda i=idx: self.duplicate_at(i), "black"),
-                ("✖", lambda i=idx: self.delete_at(i), "red"),
-            ]:
-                tk.Button(btns, text=label, width=2, relief="ridge", bg="white", fg=fg, command=cmd).pack(side=tk.LEFT, padx=1)
+            show_btn = tk.Button(
+                btns, image=self.tasklist_icons.get("show"), text="◎" if not self.tasklist_icons.get("show") else "", width=20,
+                relief="ridge", bg="white", command=lambda i=idx: self.show_position(i),
+                state=("normal" if task.task_type in TASKS_WITH_POSITION else "disabled")
+            )
+            show_btn.pack(side=tk.LEFT, padx=1)
+            CreateToolTip(show_btn, "Show task position")
+            button_defs = [
+                ("up", "↑", lambda i=idx: self.move_up(i), "black", "Move up"),
+                ("down", "↓", lambda i=idx: self.move_down(i), "black", "Move down"),
+                ("edit", "✎", lambda i=idx: self.edit_task_at(i), "black", "Edit"),
+                ("duplicate", "⧉", lambda i=idx: self.duplicate_at(i), "black", "Duplicate"),
+                (None, "✖", lambda i=idx: self.delete_at(i), "red", "Delete"),
+            ]
+            for key, fallback, cmd, fg, tip in button_defs:
+                b = tk.Button(
+                    btns,
+                    image=self.tasklist_icons.get(key) if key else None,
+                    text=fallback if (not key or not self.tasklist_icons.get(key)) else "",
+                    width=20,
+                    relief="ridge",
+                    bg="white",
+                    fg=fg,
+                    command=cmd,
+                )
+                b.pack(side=tk.LEFT, padx=1)
+                CreateToolTip(b, tip)
+
+            self._bind_row_click(row, idx)
         self._refresh_macro_info()
 
     def _select(self, i: int) -> None:
-        self.selected_index = i
+        self.selected_index = None if self.selected_index == i else i
         self._refresh_task_rows()
 
     def _edit_dialog(self, task_type: str, initial: Dict[str, str]) -> Dict[str, str] | None:
