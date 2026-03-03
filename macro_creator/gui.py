@@ -503,12 +503,13 @@ class MacroCreatorApp:
 
             btns = tk.Frame(row, bg=bg)
             btns.grid(row=0, column=3, sticky="e", padx=2)
-            action_btn_w = 3
+            action_btn_size = 24
             show_btn = tk.Button(
                 btns,
                 image=self.tasklist_icons.get("show"),
                 text="◎" if not self.tasklist_icons.get("show") else "",
-                width=action_btn_w,
+                width=action_btn_size,
+                height=action_btn_size,
                 relief="ridge",
                 bg="white",
                 command=lambda i=idx: self.show_position(i),
@@ -524,11 +525,13 @@ class MacroCreatorApp:
                 (None, "✖", lambda i=idx: self.delete_at(i), "red", "Delete"),
             ]
             for key, fallback, cmd, fg, tip in button_defs:
+                has_icon = bool(key and self.tasklist_icons.get(key))
                 b = tk.Button(
                     btns,
-                    image=self.tasklist_icons.get(key) if key else None,
-                    text=fallback if (not key or not self.tasklist_icons.get(key)) else "",
-                    width=action_btn_w,
+                    image=self.tasklist_icons.get(key) if has_icon else None,
+                    text=fallback if not has_icon else "",
+                    width=(action_btn_size if has_icon else 2),
+                    height=(action_btn_size if has_icon else 1),
                     relief="ridge",
                     bg="white",
                     fg=fg,
