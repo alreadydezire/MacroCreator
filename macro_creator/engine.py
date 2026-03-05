@@ -81,8 +81,19 @@ class MacroEngine:
                 self._pause_event.wait()
                 self.state.current_task_index = task_idx
                 task = doc.tasks[task_idx]
+                one_off = str(task.params.get("one_off", "0")).lower() in {"1", "true", "yes", "on"}
+                if one_off and loop_idx > 0:
+                    continue
                 update(f"Loop {loop_idx + 1}/{doc.loop_count} | Task {task_idx + 1}: {task.task_type}")
                 self._execute_task(task, doc, loop_idx, task_idx)
+                delay = max(0.0, float(getattr(doc, "inter_task_delay", 0.0)))
+                if delay > 0:
+                    end_delay = time.time() + delay
+                    while time.time() < end_delay:
+                        if self._stop_requested:
+                            return
+                        self._pause_event.wait()
+                        time.sleep(0.05)
         update("Completed")
 
     def _execute_task(self, task: Task, doc: MacroDocument, loop_idx: int, task_idx: int) -> None:
@@ -95,6 +106,8 @@ class MacroEngine:
                 clicks=2 if params.get("click_type", "single").lower() == "double" else 1,
                 button=params.get("button", "left").lower(),
             )
+        elif task.task_type == "Move":
+            p.moveTo(x=int(params.get("x", 0)), y=int(params.get("y", 0)))
         elif task.task_type == "String":
             text = self._resolve_value(str(params.get("text", "")), doc, loop_idx)
             p.write(text)

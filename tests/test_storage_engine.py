@@ -19,6 +19,16 @@ def test_document_roundtrip(tmp_path):
     assert loaded.tasks[0].task_type == "String"
 
 
+def test_inter_task_delay_roundtrip(tmp_path):
+    from macro_creator.storage import MacroStorage
+
+    doc = MacroDocument(name="D", inter_task_delay=0.75)
+    out = tmp_path / "macro_delay.json"
+    MacroStorage.save(str(out), doc)
+    loaded = MacroStorage.load(str(out))
+    assert loaded.inter_task_delay == 0.75
+
+
 def test_variable_resolution():
     engine = MacroEngine()
     doc = MacroDocument(variables={"name": ["alice", "bob"]})

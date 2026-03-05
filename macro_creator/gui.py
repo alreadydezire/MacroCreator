@@ -39,19 +39,21 @@ except Exception:  # pragma: no cover
     _pyautogui = None
 
 TASK_FIELDS: Dict[str, Dict[str, str]] = {
-    "Click": {"x": "0", "y": "0", "click_type": "Single", "button": "Left", "comment": ""},
-    "String": {"text": "", "comment": ""},
-    "Keypress": {"key": "enter", "comment": ""},
-    "Hotkey": {"keys": "ctrl,c", "comment": ""},
-    "Condition": {"x": "0", "y": "0", "rgb": "255,255,255", "timeout": "30", "comment": ""},
-    "Wait": {"seconds": "1", "comment": ""},
-    "Variable": {"name": "", "comment": ""},
-    "Screenshot": {"folder": "screenshots", "base_name": "shot", "comment": ""},
+    "Click": {"x": "0", "y": "0", "click_type": "Single", "button": "Left", "comment": "", "one_off": "0"},
+    "Move": {"x": "0", "y": "0", "comment": "", "one_off": "0"},
+    "String": {"text": "", "comment": "", "one_off": "0"},
+    "Keypress": {"key": "enter", "comment": "", "one_off": "0"},
+    "Hotkey": {"keys": "ctrl,c", "comment": "", "one_off": "0"},
+    "Condition": {"x": "0", "y": "0", "rgb": "255,255,255", "timeout": "30", "comment": "", "one_off": "0"},
+    "Wait": {"seconds": "1", "comment": "", "one_off": "0"},
+    "Variable": {"name": "", "comment": "", "one_off": "0"},
+    "Screenshot": {"folder": "screenshots", "base_name": "shot", "comment": "", "one_off": "0"},
 }
-TASKS_WITH_POSITION = {"Click", "Condition"}
+TASKS_WITH_POSITION = {"Click", "Move", "Condition"}
 
 TASK_ICON_MAP = {
     "Click": "Images/Tasks/click-ico.png",
+    "Move": "Images/position.png",
     "String": "Images/Tasks/type-ico.png",
     "Keypress": "Images/Tasks/press-ico.png",
     "Hotkey": "Images/Tasks/hotkey-ico.png",
@@ -134,6 +136,8 @@ class TaskEditorDialog:
             self._position_row(row, "Mouse Position", "x", "y"); row += 1
             self._dropdown_row(row, "Click Type", "click_type", ["Single", "Double"]); row += 1
             self._dropdown_row(row, "Mouse Button", "button", ["Left", "Right", "Middle"]); row += 1
+        elif task_type == "Move":
+            self._position_row(row, "Mouse Position", "x", "y"); row += 1
         elif task_type == "Condition":
             self._position_row(row, "Mouse Position", "x", "y"); row += 1
             self._color_row(row, "Color (RGB)", "rgb"); row += 1
@@ -151,6 +155,14 @@ class TaskEditorDialog:
                 if k != "comment":
                     self._entry_row(row, k, k)
                     row += 1
+
+        self.one_off_var = tk.BooleanVar(value=False)
+        if str(initial.get("one_off", "0")).lower() in {"1", "true", "yes", "on"}:
+            self.one_off_var.set(True)
+        cb = tk.Checkbutton(self.window, text="One-off task (do not repeat in loops)", variable=self.one_off_var, bg="white")
+        cb.grid(row=row, column=0, columnspan=5, sticky="w", padx=8, pady=(2, 4))
+        CreateToolTip(cb, "If enabled, this task runs only during the first loop.")
+        row += 1
 
         self._entry_row(row, "Comment (optional)", "comment")
         CreateToolTip(self.window.grid_slaves(row=row, column=1)[0], "Optional label to help identify this task in the task list.")
@@ -262,6 +274,7 @@ class TaskEditorDialog:
 
     def _save(self) -> None:
         self.result = {k: v.get() for k, v in self.entries.items()}
+        self.result["one_off"] = "1" if getattr(self, "one_off_var", tk.BooleanVar(value=False)).get() else "0"
         self.window.destroy()
 
 
@@ -276,6 +289,7 @@ class MacroCreatorApp:
         self.tasklist_icons: Dict[str, Any] = {}
         self.csv_sources: Dict[str, str] = {}
         self.dirty = False
+        self._drag_from_index: int | None = None
 
         self.root = tk.Tk()
         self.root.title("MacroCreator")
@@ -397,6 +411,7 @@ class MacroCreatorApp:
         y.pack(side=tk.RIGHT, fill=tk.Y)
         self.task_inner.bind("<Configure>", lambda _e: self.task_canvas.configure(scrollregion=self.task_canvas.bbox("all")))
         self.task_canvas.bind("<Configure>", lambda e: self.task_canvas.itemconfig(self.task_window, width=e.width))
+        self.task_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         bottom = tk.Frame(outer, bg="white", relief="ridge", bd=1)
         bottom.pack(fill=tk.X, pady=(4, 0))
@@ -443,8 +458,42 @@ class MacroCreatorApp:
         if isinstance(widget, tk.Button):
             return
         widget.bind("<Button-1>", lambda _e, i=idx: self._select(i))
+        widget.bind("<ButtonPress-1>", lambda _e, i=idx: self._on_drag_start(i))
+        widget.bind("<ButtonRelease-1>", self._on_drag_end)
         for child in widget.winfo_children():
             self._bind_row_click(child, idx)
+
+    def _on_drag_start(self, idx: int) -> None:
+        self._drag_from_index = idx
+
+    def _on_drag_end(self, event) -> None:
+        from_idx = getattr(self, "_drag_from_index", None)
+        if from_idx is None:
+            return
+        rows = self.task_inner.winfo_children()
+        if not rows:
+            return
+        y_root = event.y_root
+        to_idx = from_idx
+        for i, row in enumerate(rows):
+            cy = row.winfo_rooty() + (row.winfo_height() // 2)
+            if y_root < cy:
+                to_idx = i
+                break
+            to_idx = i
+        if 0 <= from_idx < len(self.doc.tasks) and 0 <= to_idx < len(self.doc.tasks) and from_idx != to_idx:
+            task = self.doc.tasks.pop(from_idx)
+            self.doc.tasks.insert(to_idx, task)
+            self.selected_index = to_idx
+            self._mark_dirty()
+            self._refresh_task_rows()
+        self._drag_from_index = None
+
+    def _on_mousewheel(self, event) -> None:
+        try:
+            self.task_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except Exception:
+            pass
 
     def _mark_dirty(self) -> None:
         self.dirty = True
@@ -460,6 +509,8 @@ class MacroCreatorApp:
         p = task.params
         if task.task_type == "Variable":
             return f"name: {p.get('name','')}"
+        if task.task_type == "Move":
+            return f"to {p.get('x','0')},{p.get('y','0')}"
         if task.task_type == "Keypress":
             return f"key: {p.get('key','')}"
         if task.task_type == "Click":
@@ -611,6 +662,7 @@ class MacroCreatorApp:
         if self.selected_index is not None: self.delete_at(self.selected_index)
 
     def run_pause_continue(self) -> None:
+        self.doc.inter_task_delay = max(0.0, float(self.quick_delay.get() or 0))
         if self.loop_mode_var.get() == "count":
             self.doc.loop_count = max(1, int(self.loop_var.get()))
         elif self.loop_mode_var.get() == "csv_end" and self.loop_csv_var.get() in self.csv_sources:
@@ -761,6 +813,7 @@ class MacroCreatorApp:
         self._refresh_loop_csv_options(); self._refresh_task_rows(); self._refresh_macro_info()
 
     def save_macro(self) -> None:
+        self.doc.inter_task_delay = max(0.0, float(self.quick_delay.get() or 0))
         if self.loop_mode_var.get() == "count":
             self.doc.loop_count = max(1, int(self.loop_var.get()))
         elif self.loop_mode_var.get() == "csv_end" and self.loop_csv_var.get() in self.csv_sources:
@@ -774,6 +827,7 @@ class MacroCreatorApp:
         MacroStorage.save(self.file_path, self.doc); self.dirty = False; self._refresh_macro_info()
 
     def save_as_macro(self) -> None:
+        self.doc.inter_task_delay = max(0.0, float(self.quick_delay.get() or 0))
         p = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Macro JSON", "*.json")])
         if not p: return
         self.file_path = p
@@ -783,7 +837,7 @@ class MacroCreatorApp:
     def open_macro(self) -> None:
         p = filedialog.askopenfilename(filetypes=[("Macro JSON", "*.json")])
         if not p: return
-        self.file_path = p; self.doc = MacroStorage.load(p); self.csv_sources = dict(getattr(self.doc, "csv_sources", {})); self.loop_var.set(self.doc.loop_count); self.selected_index = None; self.dirty = False
+        self.file_path = p; self.doc = MacroStorage.load(p); self.csv_sources = dict(getattr(self.doc, "csv_sources", {})); self.loop_var.set(self.doc.loop_count); self.quick_delay.set(str(getattr(self.doc, "inter_task_delay", 0.0))); self.selected_index = None; self.dirty = False
         self._refresh_loop_csv_options(); self._refresh_task_rows(); self._refresh_macro_info()
 
     def run(self) -> None:
